@@ -1664,22 +1664,53 @@ for boolean multivariate quantities.
 
 ### Seemingly unrelated regressions {-}
 
-The first model considered is the "seemingly unrelated" regressions
-(SUR) of econometrics where several linear regressions share
-predictors and use a covariance error structure rather than
-independent errors [@Zellner:1962; @Greene:2011].
+The "seemingly unrelated" regressions (SUR) model from econometrics
+[@Zellner:1962; @Greene:2011] is a system of multiple linear
+regression equations that appear unrelated because each equation may
+have its own set of predictors, but are related through correlated
+error terms. The key insight is that jointly estimating these
+equations can be more efficient than estimating each separately when
+the errors are correlated across equations and the predictors differ.
 
-The model is easy to write down as a regression,
+#### General SUR model {-}
+
+In the general SUR model, each of $K$ outcomes has its own design
+matrix. For outcome $k$ and observation $n$:
 \begin{align*}
-y_n        &=  x_n \, \beta + \epsilon_n \\
+y_{n,k}      &= x_{n,k} \, \beta_k + \epsilon_{n,k}
+\end{align*}
+
+where $x_{n,k}$ is a $J_k$-vector of predictors for outcome $k$
+(potentially different predictors and even different numbers of
+predictors for each outcome), $\beta_k$ is the corresponding
+$J_k$-vector of coefficients, and the errors across outcomes for each
+observation are jointly distributed:
+$$
+\epsilon_n \sim \textsf{multivariate normal}(0, \Sigma)
+$$
+where $\epsilon_n = (\epsilon_{n,1}, \ldots, \epsilon_{n,K})$ and
+$\Sigma$ is the $K \times K$ covariance matrix governing the
+correlation structure across outcomes.
+
+SUR provides efficiency gains over separate OLS regressions when the
+errors are correlated across equations *and* the predictor sets differ
+across equations. When all equations share exactly the same
+predictors, SUR reduces to equation-by-equation OLS.
+
+#### Simplified SUR with shared predictors {-}
+
+As a starting point, consider the simplified case where all outcomes
+share the same predictors. The model can be written as:
+\begin{align*}
+y_n        &=  \beta \, x_n + \epsilon_n \\
 \epsilon_n &\sim \textsf{multivariate normal}(0, \Sigma)
 \end{align*}
 
-where $x_n$ is a $J$-row-vector of predictors ($x$ is an $(N \times
-J)$ matrix), $y_n$ is a $K$-vector of observations, $\beta$ is a $(K
-\times J)$ matrix of regression coefficients (vector $\beta_k$ holds
-coefficients for outcome $k$), and $\Sigma$ is covariance matrix
-governing the error.  As usual, the intercept can be rolled into $x$
+where $x_n$ is a $J$-vector of predictors (shared across all
+outcomes), $y_n$ is a $K$-vector of observations, $\beta$ is a $(K
+\times J)$ matrix of regression coefficients (row $\beta_k$ holds
+coefficients for outcome $k$), and $\Sigma$ is the covariance matrix
+governing the error. As usual, the intercept can be rolled into $x$
 as a column of ones.
 
 The basic Stan code is straightforward (though see below for more
@@ -1750,6 +1781,65 @@ all at once by converting the matrix `beta` to a vector.
 If required, the full correlation or covariance matrices may be
 reconstructed from their Cholesky factors in the generated quantities
 block.
+
+#### General SUR with different predictors per outcome {-}
+
+The simplified model above assumes all outcomes share the same
+predictors. The general SUR model allows each outcome to have its own
+set of predictors, which is when SUR provides the most benefit over
+separate regressions.
+
+The following Stan code implements a general SUR model where each
+outcome $k$ has its own design matrix $X_k$. For simplicity, this
+example assumes each outcome has the same number of predictors $J$,
+but the predictor values can differ. The extension to varying numbers
+of predictors per outcome would require ragged array handling.
+
+```stan
+data {
+  int<lower=1> K;                  // number of outcomes
+  int<lower=1> J;                  // number of predictors per outcome
+  int<lower=0> N;                  // number of observations
+  array[K] matrix[N, J] X;         // predictor matrices, one per outcome
+  array[N] vector[K] y;            // outcomes
+}
+parameters {
+  array[K] vector[J] beta;         // coefficients for each outcome
+  cholesky_factor_corr[K] L_Omega;
+  vector<lower=0>[K] L_sigma;
+}
+model {
+  array[N] vector[K] mu;
+  matrix[K, K] L_Sigma;
+
+  for (n in 1:N) {
+    for (k in 1:K) {
+      mu[n, k] = X[k, n] * beta[k];
+    }
+  }
+
+  L_Sigma = diag_pre_multiply(L_sigma, L_Omega);
+
+  for (k in 1:K) {
+    beta[k] ~ normal(0, 5);
+  }
+  L_Omega ~ lkj_corr_cholesky(4);
+  L_sigma ~ cauchy(0, 2.5);
+
+  y ~ multi_normal_cholesky(mu, L_Sigma);
+}
+```
+
+In this formulation, `X[k]` is the $N \times J$ design matrix for
+outcome $k$, and `beta[k]` is the corresponding $J$-vector of
+coefficients. The key difference from the shared-predictor version is
+that each outcome's linear predictor `mu[n, k]` is computed using its
+own design matrix `X[k]` and coefficient vector `beta[k]`.
+
+This general formulation allows for different predictor values (or
+even completely different variables) for each outcome, which is the
+setting where SUR provides efficiency gains through joint estimation
+of the correlated errors.
 
 
 ### Multivariate probit regression {-}
