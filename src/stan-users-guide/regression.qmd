@@ -1671,11 +1671,11 @@ independent errors [@Zellner:1962; @Greene:2011].
 
 The model is easy to write down as a regression,
 \begin{align*}
-y_n        &=  x_n \, \beta + \epsilon_n \\
+y_n        &=  \beta \, x_n^T  + \epsilon_n \\
 \epsilon_n &\sim \textsf{multivariate normal}(0, \Sigma)
 \end{align*}
 
-where $x_n$ is a $J$-row-vector of predictors ($x$ is an $(N \times
+where $x_n$ is a $J$-row-vector of predictors ($\mathbf{X}$ is an $((N \times
 J)$ matrix), $y_n$ is a $K$-vector of observations, $\beta$ is a $(K
 \times J)$ matrix of regression coefficients (vector $\beta_k$ holds
 coefficients for outcome $k$), and $\Sigma$ is covariance matrix
